@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Dec 09, 2025 at 02:48 PM
+-- Generation Time: Dec 10, 2025 at 07:07 PM
 -- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- PHP Version: 8.0.30
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -31,6 +31,8 @@ CREATE TABLE `attendance_logs` (
   `id` int(11) NOT NULL,
   `user_id` varchar(50) NOT NULL,
   `type` varchar(10) NOT NULL,
+  `working_from` enum('office','home','client') DEFAULT NULL,
+  `reason` enum('normal','lunch','tea','short_leave','office_leave') NOT NULL DEFAULT 'normal',
   `time` datetime NOT NULL,
   `device_id` varchar(100) NOT NULL,
   `latitude` decimal(10,6) DEFAULT NULL,
@@ -42,9 +44,9 @@ CREATE TABLE `attendance_logs` (
 -- Dumping data for table `attendance_logs`
 --
 
-INSERT INTO `attendance_logs` (`id`, `user_id`, `type`, `time`, `device_id`, `latitude`, `longitude`, `synced`) VALUES
-(51, '1', 'in', '2025-12-09 15:58:44', 'AP3A.240905.015.A2', 20.420329, 72.870756, 1),
-(52, '1', 'out', '2025-12-09 15:59:34', 'AP3A.240905.015.A2', 20.420332, 72.870751, 1);
+INSERT INTO `attendance_logs` (`id`, `user_id`, `type`, `working_from`, `reason`, `time`, `device_id`, `latitude`, `longitude`, `synced`) VALUES
+(65, '1', 'in', 'office', 'office_leave', '2025-12-10 10:06:00', 'ADMIN_WEB', NULL, NULL, 1),
+(66, '1', 'out', 'office', 'office_leave', '2025-12-10 20:06:00', 'ADMIN_WEB', NULL, NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -103,6 +105,7 @@ CREATE TABLE `employees` (
   `department_id` int(11) DEFAULT NULL,
   `designation_id` int(11) DEFAULT NULL,
   `shift_id` int(11) DEFAULT NULL,
+  `weekoff_days` varchar(100) DEFAULT NULL,
   `joining_date` date DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   `device_id` varchar(100) DEFAULT NULL,
@@ -114,8 +117,9 @@ CREATE TABLE `employees` (
 -- Dumping data for table `employees`
 --
 
-INSERT INTO `employees` (`id`, `emp_code`, `name`, `mobile`, `email`, `dob`, `department_id`, `designation_id`, `shift_id`, `joining_date`, `updated_at`, `device_id`, `status`, `created_at`) VALUES
-(2, 'EMP001', 'Sachin Mandal', '6352816306', 'sachin.balarbuilders@gmail.com', '0000-00-00', 1, 2, 2, '2025-05-30', '2025-12-09 13:36:12', NULL, 1, '2025-12-09 13:23:41');
+INSERT INTO `employees` (`id`, `emp_code`, `name`, `mobile`, `email`, `dob`, `department_id`, `designation_id`, `shift_id`, `weekoff_days`, `joining_date`, `updated_at`, `device_id`, `status`, `created_at`) VALUES
+(3, 'EMP001', 'Sachin Mandal', '6352816306', 'sachin.balarbuilders@gmail.com', '2025-12-10', 1, 2, 2, 'Wednesday', '2025-05-30', '2025-12-10 10:10:43', NULL, 1, '2025-12-09 20:17:04'),
+(4, 'EMP004', 'Harish Thapa', '6352816306', '', '0000-00-00', 1, 2, 2, NULL, '2025-12-10', '2025-12-10 09:11:25', NULL, 1, '2025-12-10 09:10:56');
 
 -- --------------------------------------------------------
 
@@ -190,25 +194,25 @@ ALTER TABLE `shifts`
 -- AUTO_INCREMENT for table `attendance_logs`
 --
 ALTER TABLE `attendance_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=53;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=67;
 
 --
 -- AUTO_INCREMENT for table `departments`
 --
 ALTER TABLE `departments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `designations`
 --
 ALTER TABLE `designations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `employees`
 --
 ALTER TABLE `employees`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `shifts`

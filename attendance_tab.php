@@ -11,17 +11,21 @@ $month = isset($_GET['month']) ? (int)$_GET['month'] : $currentMonth;
 $monthName  = date('F Y', strtotime("$year-$month-01"));
 $totalDays  = cal_days_in_month(CAL_GREGORIAN, $month, $year);
 
-/* ---------- Fetch Employees (with emp_code for mapping) ---------- */
+/* ---------- Fetch Employees (with emp_code, shift info, weekoff_days for mapping) ---------- */
 $empSql = "
-    SELECT e.id, e.emp_code, e.name, desig.designation_name 
+    SELECT e.id, e.emp_code, e.name, desig.designation_name, e.shift_id, e.weekoff_days,
+           s.start_time, s.end_time, s.late_mark_after, s.half_day_after
     FROM employees e
     LEFT JOIN designations desig ON desig.id = e.designation_id
+    LEFT JOIN shifts s ON s.id = e.shift_id
     ORDER BY e.name ASC
 ";
 $empRes = $con->query($empSql);
 
 $employees      = [];
 $empByLogUserId = []; // key = attendance_logs.user_id, value = employee_id
+$empShifts      = []; // key = employee_id, value = shift data
+$empWeekOffs    = []; // key = employee_id, value = weekoff_days string
 
 if ($empRes && $empRes->num_rows > 0) {
     while ($row = $empRes->fetch_assoc()) {
@@ -31,8 +35,45 @@ if ($empRes && $empRes->num_rows > 0) {
             $num = (int)$row['id']; // fallback
         }
         $row['log_user_id']    = $num;
+        $empId = (int)$row['id'];
         $employees[]           = $row;
-        $empByLogUserId[$num]  = (int)$row['id'];
+        $empByLogUserId[$num]  = $empId;
+        
+        // Store shift info
+        if ($row['shift_id']) {
+            $empShifts[$empId] = [
+                'start_time' => $row['start_time'],
+                'end_time' => $row['end_time'],
+                'late_mark_after' => (int)($row['late_mark_after'] ?? 30), // minutes
+                'half_day_after' => (int)($row['half_day_after'] ?? 270) // minutes
+            ];
+        }
+        
+        // Store weekoff days
+        if (!empty($row['weekoff_days'])) {
+            $empWeekOffs[$empId] = $row['weekoff_days']; // e.g., "Wednesday" or "Saturday,Sunday"
+        }
+    }
+}
+
+/* ---------- Fetch Holidays for this month ---------- */
+$holidaysMap = []; // [date] = holiday_name (e.g., ['2025-12-25' => 'Christmas'])
+$startDate = sprintf('%04d-%02d-01', $year, $month);
+$endDate = date('Y-m-t', strtotime($startDate));
+
+// Check if holidays table exists
+$tableCheck = $con->query("SHOW TABLES LIKE 'holidays'");
+if ($tableCheck && $tableCheck->num_rows > 0) {
+    $holidaySql = "SELECT holiday_date, holiday_name FROM holidays WHERE holiday_date BETWEEN ? AND ?";
+    $stmtHoliday = $con->prepare($holidaySql);
+    if ($stmtHoliday) {
+        $stmtHoliday->bind_param("ss", $startDate, $endDate);
+        $stmtHoliday->execute();
+        $holidayRes = $stmtHoliday->get_result();
+        while ($holiday = $holidayRes->fetch_assoc()) {
+            $holidaysMap[$holiday['holiday_date']] = $holiday['holiday_name'];
+        }
+        $stmtHoliday->close();
     }
 }
 
@@ -40,8 +81,6 @@ if ($empRes && $empRes->num_rows > 0) {
 $attendanceMap = []; // [employee_id][day] = ['logs'=>[], 'status'=>'P']
 
 if (!empty($empByLogUserId)) {
-    $startDate      = sprintf('%04d-%02d-01', $year, $month);
-    $endDate        = date('Y-m-t', strtotime($startDate));
     $startDateTime  = $startDate . ' 00:00:00';
     $endDateTime    = $endDate   . ' 23:59:59';
 
@@ -88,6 +127,173 @@ $monthNames = [
  1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
  7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'
 ];
+
+/* ---------- Function to Determine Attendance Status ---------- */
+function determineAttendanceStatus($dayData, $date, $shiftInfo = null, $weekoffDays = null, $holidayName = null) {
+    // Check if date is in the future
+    $today = date('Y-m-d');
+    $isFuture = strtotime($date) > strtotime($today);
+    
+    // Check for Holiday FIRST (highest priority - overrides weekoff)
+    if ($holidayName) {
+        // If employee has logs on holiday, show as holiday with present indicator
+        if ($dayData && !empty($dayData['logs'])) {
+            $logCount = count($dayData['logs']);
+            $firstIn = null;
+            foreach ($dayData['logs'] as $log) {
+                if (strtolower($log['type']) === 'in') {
+                    $firstIn = $log;
+                    break;
+                }
+            }
+            $tooltip = "Holiday: {$holidayName} ({$logCount} punches)";
+            if ($firstIn && !empty($firstIn['working_from'])) {
+                $tooltip .= " · " . ucfirst($firstIn['working_from']);
+            }
+            return ['status' => 'H', 'tooltip' => $tooltip];
+        }
+        // No logs on holiday
+        return ['status' => 'H', 'tooltip' => "Holiday: {$holidayName}"];
+    }
+    
+    // Check for Week Off (after holiday check) - this is the second priority
+    if ($weekoffDays) {
+        $dayName = date('l', strtotime($date)); // Full day name: Monday, Tuesday, etc.
+        $weekoffArray = array_map('trim', explode(',', $weekoffDays));
+        if (in_array($dayName, $weekoffArray)) {
+            // If employee has logs on week off day, show as week off with present indicator
+            if ($dayData && !empty($dayData['logs'])) {
+                $logCount = count($dayData['logs']);
+                $firstIn = null;
+                foreach ($dayData['logs'] as $log) {
+                    if (strtolower($log['type']) === 'in') {
+                        $firstIn = $log;
+                        break;
+                    }
+                }
+                $tooltip = "Week Off ({$logCount} punches)";
+                if ($firstIn && !empty($firstIn['working_from'])) {
+                    $tooltip .= " · " . ucfirst($firstIn['working_from']);
+                }
+                return ['status' => 'WO', 'tooltip' => $tooltip];
+            }
+            // No logs on week off day - show as week off even for future dates
+            return ['status' => 'WO', 'tooltip' => 'Week Off'];
+        }
+    }
+    
+    // If no logs, check if it's a future date
+    if (!$dayData || empty($dayData['logs'])) {
+        if ($isFuture) {
+            return ['status' => '-', 'tooltip' => 'Future Date'];
+        }
+        return ['status' => 'A', 'tooltip' => 'Absent'];
+    }
+    
+    $logs = $dayData['logs'];
+    $logCount = count($logs);
+    
+    // Separate IN and OUT logs
+    $inLogs = [];
+    $outLogs = [];
+    foreach ($logs as $log) {
+        if (strtolower($log['type']) === 'in') {
+            $inLogs[] = $log;
+        } elseif (strtolower($log['type']) === 'out') {
+            $outLogs[] = $log;
+        }
+    }
+    
+    // Sort by time
+    usort($inLogs, function($a, $b) {
+        return strtotime($a['time']) - strtotime($b['time']);
+    });
+    usort($outLogs, function($a, $b) {
+        return strtotime($a['time']) - strtotime($b['time']);
+    });
+    
+    $firstIn = !empty($inLogs) ? $inLogs[0] : null;
+    $lastOut = !empty($outLogs) ? $outLogs[count($outLogs) - 1] : null;
+    
+    // Get reason from logs (ENUM: 'normal', 'lunch', 'tea', 'short_leave', 'office_leave')
+    $reason = strtolower(trim($firstIn['reason'] ?? $lastOut['reason'] ?? 'normal'));
+    
+    // Check reason field (based on actual ENUM values)
+    if ($reason === 'short_leave') {
+        return ['status' => 'SL', 'tooltip' => 'Short Leave'];
+    }
+    
+    if ($reason === 'office_leave') {
+        return ['status' => 'LV', 'tooltip' => 'Leave'];
+    }
+    
+    // Check if clock out is missing
+    if ($firstIn && !$lastOut) {
+        // Check if it's end of day (after shift end time + buffer)
+        $currentTime = time();
+        $dayEnd = strtotime($date . ' 23:59:59');
+        
+        // If current time is past day end, mark as didn't clock out
+        if ($currentTime > $dayEnd) {
+            return ['status' => 'DCO', 'tooltip' => "Didn't Clock Out"];
+        }
+    }
+    
+    // Calculate times if shift info available
+    if ($shiftInfo && $firstIn) {
+        $clockInTime = strtotime($firstIn['time']);
+        $shiftStart = strtotime($date . ' ' . $shiftInfo['start_time']);
+        $shiftEnd = strtotime($date . ' ' . $shiftInfo['end_time']);
+        $lateMarkAfter = $shiftInfo['late_mark_after']; // minutes
+        $halfDayAfter = $shiftInfo['half_day_after']; // minutes
+        
+        // Check for Late
+        $lateThreshold = $shiftStart + ($lateMarkAfter * 60);
+        if ($clockInTime > $lateThreshold) {
+            $lateMinutes = round(($clockInTime - $shiftStart) / 60);
+            return ['status' => 'L', 'tooltip' => "Late by {$lateMinutes} minutes"];
+        }
+        
+        // Check for Early Go (if clocked out before shift end)
+        if ($lastOut) {
+            $clockOutTime = strtotime($lastOut['time']);
+            $earlyGoThreshold = $shiftEnd - (60 * 60); // 1 hour before shift end
+            
+            if ($clockOutTime < $earlyGoThreshold) {
+                $earlyMinutes = round(($shiftEnd - $clockOutTime) / 60);
+                return ['status' => 'EG', 'tooltip' => "Early Go by {$earlyMinutes} minutes"];
+            }
+            
+            // Check for half day (less than half_day_after minutes worked)
+            // Exclude lunch/tea breaks from work duration
+            $workDuration = ($clockOutTime - $clockInTime) / 60; // minutes
+            
+            // If reason is lunch or tea, it's a break, not half day
+            if ($reason !== 'lunch' && $reason !== 'tea' && $workDuration < $halfDayAfter) {
+                // Determine first or second half based on clock in time
+                $midDay = strtotime($date . ' 12:00:00');
+                if ($clockInTime < $midDay) {
+                    return ['status' => 'FH', 'tooltip' => 'First Half'];
+                } else {
+                    return ['status' => 'SH', 'tooltip' => 'Second Half'];
+                }
+            }
+        }
+    }
+    
+    // No automatic weekend detection - weekends are only week off if set in weekoff_days
+    
+    // Default: Present
+    $tooltip = "Present ({$logCount} punches)";
+    if ($firstIn && !empty($firstIn['working_from'])) {
+        $tooltip .= " · " . ucfirst($firstIn['working_from']);
+    }
+    if ($reason && $reason !== 'normal') {
+        $tooltip .= " · " . ucfirst(str_replace('_', ' ', $reason));
+    }
+    
+    return ['status' => 'P', 'tooltip' => $tooltip];
+}
 ?>
 
 <style>
@@ -112,9 +318,13 @@ body { background:#f5f6f8; font-family: Arial, sans-serif; }
 /* Legend */
 .att-legend {
     display:flex;
-    gap:16px;
+    gap:12px;
     flex-wrap:wrap;
-    margin-bottom:10px;
+    margin-bottom:16px;
+    background:#fff;
+    padding:12px 16px;
+    border-radius:12px;
+    border:1px solid #e3e3e3;
 }
 .att-pill {
     display:flex;
@@ -125,11 +335,28 @@ body { background:#f5f6f8; font-family: Arial, sans-serif; }
     border-radius:999px;
     padding:4px 12px;
 }
+.att-pill-icon{
+    width:14px;height:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:10px;
+}
 .att-pill-dot{
     width:12px;height:12px;border-radius:50%;
 }
 .dot-present{background:#16a34a;}
 .dot-absent{background:#dc2626;}
+.dot-late{background:#2563eb;}
+.dot-earlygo{background:#ea580c;}
+.dot-holiday{background:#ec4899;}
+.dot-leave{background:#9333ea;}
+.dot-shortleave{background:#7c3aed;}
+.dot-weekoff{background:#06b6d4;}
+.dot-firsthalf{background:#f97316;}
+.dot-secondhalf{background:#f97316;}
+.dot-autoclockout{background:#6b7280;}
+.dot-didntclockout{background:#6b7280;}
 
 /* ---------- Filter Styling (Compact) ---------- */
 .att-filter-select {
@@ -229,15 +456,28 @@ body { background:#f5f6f8; font-family: Arial, sans-serif; }
 .att-badge {
     width: 30px; height: 30px;
     border-radius: 50%;
-    font-size:13px;
+    font-size:12px;
     font-weight:bold;
     display:flex;
     justify-content:center;
     align-items:center;
     margin:auto;
+    position:relative;
+    line-height:1;
 }
 .att-P { background:#dcfce7; color:#166534; }
 .att-A { background:#fee2e2; color:#b91c1c; }
+.att-L { background:#dbeafe; color:#1e40af; } /* Late */
+.att-EG { background:#fed7aa; color:#c2410c; } /* Early Go */
+.att-H { background:#fce7f3; color:#be185d; } /* Holiday */
+.att-LV { background:#f3e8ff; color:#6b21a8; } /* Leave */
+.att-SL { background:#ede9fe; color:#5b21b6; } /* Short Leave */
+.att-WO { background:#cffafe; color:#0e7490; } /* Week Off */
+.att-FH { background:#fed7aa; color:#c2410c; } /* First Half */
+.att-SH { background:#fed7aa; color:#c2410c; } /* Second Half */
+.att-ACO { background:#f3f4f6; color:#374151; } /* Auto Clock Out */
+.att-DCO { background:#f3f4f6; color:#374151; } /* Didn't Clock Out */
+.att-future { background:#ffffff; color:#9ca3af; border:1px solid #e5e7eb; } /* Future Date */
 
 /* Tooltip */
 .att-cell-wrapper {
@@ -314,8 +554,42 @@ body { background:#f5f6f8; font-family: Arial, sans-serif; }
 
     <!-- LEGEND -->
     <div class="att-legend">
-        <div class="att-pill"><span class="att-pill-dot dot-present"></span> Present</div>
-        <div class="att-pill"><span class="att-pill-dot dot-absent"></span> Absent</div>
+        <div class="att-pill" style="color:#16a34a;">
+            <span class="att-pill-dot dot-present"></span> Present
+        </div>
+        <div class="att-pill" style="color:#dc2626;">
+            <span class="att-pill-dot dot-absent"></span> Absent
+        </div>
+        <div class="att-pill" style="color:#2563eb;">
+            <span class="att-pill-icon">⏰</span> Late
+        </div>
+        <div class="att-pill" style="color:#ea580c;">
+            <span class="att-pill-icon">↓</span> Early Go
+        </div>
+        <div class="att-pill" style="color:#ec4899;">
+            <span class="att-pill-icon">🎉</span> Holiday
+        </div>
+        <div class="att-pill" style="color:#9333ea;">
+            <span class="att-pill-icon">✈</span> Leave
+        </div>
+        <div class="att-pill" style="color:#7c3aed;">
+            <span class="att-pill-icon">🏷</span> Short Leave
+        </div>
+        <div class="att-pill" style="color:#06b6d4;">
+            <span class="att-pill-icon">📅</span> Week Off
+        </div>
+        <div class="att-pill" style="color:#f97316;">
+            <span class="att-pill-icon">☀↑</span> First Half
+        </div>
+        <div class="att-pill" style="color:#f97316;">
+            <span class="att-pill-icon">☀↓</span> Second Half
+        </div>
+        <div class="att-pill" style="color:#6b7280;">
+            <span class="att-pill-icon">⚙</span> Auto Clock Out
+        </div>
+        <div class="att-pill" style="color:#6b7280;">
+            <span class="att-pill-icon">?</span> Didn't Clock Out
+        </div>
     </div>
 
     <!-- CARD -->
@@ -363,31 +637,54 @@ body { background:#f5f6f8; font-family: Arial, sans-serif; }
 
                         <!-- ATTENDANCE CELLS -->
                         <?php for ($d=1; $d <= $totalDays; $d++): 
+                            $currentDate = sprintf('%04d-%02d-%02d', $year, $month, $d);
                             $dayData = $attendanceMap[$empId][$d] ?? null;
-
-                            if ($dayData && !empty($dayData['logs'])) {
-                                $status = 'P';
+                            
+                            // Get shift info and weekoff days for this employee
+                            $shiftInfo = $empShifts[$empId] ?? null;
+                            $weekoffDays = $empWeekOffs[$empId] ?? null;
+                            
+                            // Check if this date is a holiday
+                            $holidayName = $holidaysMap[$currentDate] ?? null;
+                            
+                            // Determine status using the function (holiday overrides weekoff)
+                            $statusResult = determineAttendanceStatus($dayData, $currentDate, $shiftInfo, $weekoffDays, $holidayName);
+                            $status = $statusResult['status'];
+                            $tooltip = $statusResult['tooltip'];
+                            
+                            // Count present days (excluding holidays, week offs, leaves)
+                            if (in_array($status, ['P', 'L', 'EG', 'FH', 'SH', 'ACO', 'DCO'])) {
                                 $presentCount++;
-
-                                $logCount = count($dayData['logs']);
-                                $firstLog = $dayData['logs'][0];
-                                $lastLog  = $dayData['logs'][$logCount-1];
-
-                                $wfrom = $lastLog['working_from'] ?? '';
-                                $reason= $lastLog['reason'] ?? '';
-
-                                $tooltip = "Present ($logCount punches)";
-                                if ($wfrom)  $tooltip .= " · " . ucfirst($wfrom);
-                                if ($reason) $tooltip .= " · " . str_replace('_',' ', $reason);
-                            } else {
-                                $status  = 'A';
-                                $tooltip = "Absent";
                             }
+                            
+                            // Status display mapping
+                            $statusDisplay = [
+                                'P' => '✓',
+                                'A' => '✗',
+                                'L' => '⏰',
+                                'EG' => '↓',
+                                'H' => '🎉',
+                                'LV' => '✈',
+                                'SL' => '🏷',
+                                'WO' => '📅',
+                                'FH' => '☀↑',
+                                'SH' => '☀↓',
+                                'ACO' => '⚙',
+                                'DCO' => '?',
+                                '-' => '-'
+                            ];
+                            
+                            $display = $statusDisplay[$status] ?? '?';
                         ?>
                         <td>
-                            <div class="att-cell-wrapper">
-                                <div class="att-badge att-<?php echo $status; ?>">
-                                    <?php echo $status === 'P' ? 'P' : 'X'; ?>
+                            <div class="att-cell-wrapper att-clickable" 
+                                 data-emp-id="<?php echo $empId; ?>"
+                                 data-emp-name="<?php echo htmlspecialchars($emp['name']); ?>"
+                                 data-emp-role="<?php echo htmlspecialchars($emp['designation_name'] ?? ''); ?>"
+                                 data-date="<?php echo $currentDate; ?>"
+                                 style="cursor: pointer;">
+                                <div class="att-badge att-<?php echo $status === '-' ? 'future' : $status; ?>">
+                                    <?php echo $display; ?>
                                 </div>
                                 <div class="att-tooltip">
                                     <?php echo htmlspecialchars($tooltip); ?>
@@ -415,5 +712,7 @@ body { background:#f5f6f8; font-family: Arial, sans-serif; }
 
         </div>
     </div>
+
+</div>
 
 </div>

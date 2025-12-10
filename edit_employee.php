@@ -53,6 +53,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $department_id  = (int)($_POST['department_id'] ?? 0);
     $designation_id = (int)($_POST['designation_id'] ?? 0);
     $shift_id       = (int)($_POST['shift_id'] ?? 0);
+    // Weekoff days is optional - if no checkboxes selected, set to NULL
+    $weekoff_days   = isset($_POST['weekoff_days']) && !empty($_POST['weekoff_days']) 
+                      ? implode(',', $_POST['weekoff_days']) 
+                      : null;
     $reset_device   = !empty($_POST['reset_device']); // button se 1 aayega
 
     // Basic validation
@@ -81,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sql = "
                 UPDATE employees
                 SET name = ?, mobile = ?, email = ?, dob = ?, 
-                    department_id = ?, designation_id = ?, shift_id = ?, joining_date = ?, 
+                    department_id = ?, designation_id = ?, shift_id = ?, weekoff_days = ?, joining_date = ?, 
                     device_id = NULL,
                     updated_at = NOW()
                 WHERE id = ?
@@ -90,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sql = "
                 UPDATE employees
                 SET name = ?, mobile = ?, email = ?, dob = ?, 
-                    department_id = ?, designation_id = ?, shift_id = ?, joining_date = ?, 
+                    department_id = ?, designation_id = ?, shift_id = ?, weekoff_days = ?, joining_date = ?, 
                     updated_at = NOW()
                 WHERE id = ?
             ";
@@ -98,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmtUpd = $con->prepare($sql);
         $stmtUpd->bind_param(
-            "ssssiiisi",
+            "ssssiiissi",
             $name,
             $mobile,
             $email,
@@ -106,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $department_id,
             $designation_id,
             $shift_id,
+            $weekoff_days,
             $joining_date,
             $id
         );
@@ -129,6 +134,15 @@ $joinVal     = old('joining_date', $employee['joining_date'] ?? '');
 $deptCur     = old('department_id', $employee['department_id'] ?? '');
 $desigCur    = old('designation_id', $employee['designation_id'] ?? '');
 $shiftCur    = old('shift_id', $employee['shift_id'] ?? '');
+
+// Week Off Days - handle both POST and existing data
+$weekoffCurrent = $employee['weekoff_days'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['weekoff_days'])) {
+    $weekoffSelected = $_POST['weekoff_days'];
+} else {
+    // Parse existing weekoff_days string (e.g., "Wednesday" or "Saturday,Sunday")
+    $weekoffSelected = !empty($weekoffCurrent) ? array_map('trim', explode(',', $weekoffCurrent)) : [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -252,6 +266,27 @@ $shiftCur    = old('shift_id', $employee['shift_id'] ?? '');
               }
               ?>
             </select>
+          </div>
+
+          <!-- WEEK OFF DAYS -->
+          <div class="col-md-6">
+            <label class="form-label">Week Off Days</label>
+            <div class="border rounded p-3" style="background-color: #f8f9fa;">
+              <?php
+              $daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+              foreach ($daysOfWeek as $day) {
+                  $checked = in_array($day, $weekoffSelected) ? 'checked' : '';
+              ?>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="weekoff_days[]" 
+                         value="<?php echo $day; ?>" id="weekoff_<?php echo strtolower($day); ?>" <?php echo $checked; ?>>
+                  <label class="form-check-label" for="weekoff_<?php echo strtolower($day); ?>">
+                    <?php echo $day; ?>
+                  </label>
+                </div>
+              <?php } ?>
+            </div>
+            <div class="form-text">Select the days when this employee has week off</div>
           </div>
 
           <!-- DEVICE ID + reset button -->

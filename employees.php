@@ -134,6 +134,32 @@ if ($empRes && $empRes->num_rows > 0) {
       to   { opacity: 1; transform: translateY(0); }
     }
 
+    /* Ensure modal is hidden by default and only shows as popup overlay */
+    #attendanceDetailsModal {
+      display: none !important;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 1055;
+      width: 100%;
+      height: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
+      outline: 0;
+    }
+    #attendanceDetailsModal.show {
+      display: block !important;
+    }
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 1050;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
     /* iOS switch (used inside employees_list) */
     .switch {
       position: relative;
@@ -240,6 +266,11 @@ if ($empRes && $empRes->num_rows > 0) {
         <button class="top-nav-pill" data-page="designations.php?ajax=1">
           <span class="icon">👤</span>
           <span>Designation</span>
+        </button>
+
+        <button class="top-nav-pill" data-page="holidays.php?ajax=1">
+          <span class="icon">🎉</span>
+          <span>Holiday</span>
         </button>
       </div>
 
@@ -487,6 +518,103 @@ if ($empRes && $empRes->num_rows > 0) {
 
   </div>
 </div>
+
+    <!-- Attendance Details Modal -->
+    <div class="modal fade" id="attendanceDetailsModal" tabindex="-1" aria-labelledby="attendanceDetailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 rounded-4">
+                <!-- Header -->
+                <div class="modal-header border-0 pb-0 d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title fw-bold" style="font-size: 22px;">Attendance Details</h5>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-danger me-2" id="deleteAttendanceBtn" style="display:none;">
+                            🗑️
+                        </button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div class="modal-body pt-2">
+                    <div class="row">
+                        <!-- Left Side: Employee Info & Clock Status -->
+                        <div class="col-md-5">
+                            <!-- Employee Info -->
+                            <div class="d-flex align-items-center mb-4">
+                                <div class="emp-avatar" style="width:60px; height:60px; font-size:24px;" id="modalEmpAvatar">
+                                    E
+                                </div>
+                                <div class="ms-3">
+                                    <h6 class="mb-0 fw-bold" id="modalEmpName">Employee Name</h6>
+                                    <small class="text-muted" id="modalEmpRole">Designation</small>
+                                </div>
+                            </div>
+
+                            <!-- Clock In Status -->
+                            <div class="mb-4" id="clockInBox" style="display:none;">
+                                <div class="rounded-3 p-3 text-white" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                                    <div class="small mb-1">Clock In</div>
+                                    <div class="h4 mb-2 fw-bold" id="clockInTime">--:-- --</div>
+                                    <div class="small" id="clockInGreeting">Good morning! 👋</div>
+                                </div>
+                            </div>
+
+                            <!-- Clock Out Status -->
+                            <div class="mb-4" id="clockOutBox" style="display:none;">
+                                <div class="rounded-3 p-3 text-white" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                                    <div class="small mb-1">Clock Out</div>
+                                    <div class="h4 mb-2 fw-bold" id="clockOutTime">--:-- --</div>
+                                    <div class="small" id="clockOutGreeting">Have a great day! 👋</div>
+                                </div>
+                            </div>
+
+                            <!-- Total Work -->
+                            <div class="text-center" id="totalWorkBox" style="display:none;">
+                                <div class="position-relative d-inline-block" style="width: 150px; height: 150px;">
+                                    <svg class="transform-rotate-90" width="150" height="150">
+                                        <circle cx="75" cy="75" r="70" stroke="#e5e7eb" stroke-width="8" fill="none"/>
+                                        <circle cx="75" cy="75" r="70" stroke="#06b6d4" stroke-width="8" fill="none"
+                                                stroke-dasharray="440" stroke-dashoffset="0" id="workProgressCircle"
+                                                stroke-linecap="round" style="transition: stroke-dashoffset 0.5s;"/>
+                                        <circle cx="75" cy="75" r="70" stroke="#f59e0b" stroke-width="8" fill="none"
+                                                stroke-dasharray="440" stroke-dashoffset="0" id="breakProgressCircle"
+                                                stroke-linecap="round" style="transition: stroke-dashoffset 0.5s; display:none;"/>
+                                    </svg>
+                                    <div class="position-absolute top-50 start-50 translate-middle text-center">
+                                        <div class="small text-muted">Effective Work</div>
+                                        <div class="h5 fw-bold text-info mb-0" id="totalWorkTime">0hr 0min</div>
+                                        <div class="small text-muted mt-1" id="grossWorkTime" style="display:none;">Gross: 0hr 0min</div>
+                                        <div class="small text-warning mt-1" id="breakTime" style="display:none;">Break: 0hr 0min</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Side: Date & Activity Timeline -->
+                        <div class="col-md-7">
+                            <!-- Date -->
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="me-2">📅</span>
+                                <span id="modalDate">--/--/----</span>
+                            </div>
+
+                            <!-- Activity Timeline -->
+                            <div>
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0 fw-bold">Activity Timeline</h6>
+                                    <small class="text-muted" id="activityCount">0 activities today</small>
+                                </div>
+                                
+                                <div id="activityTimeline">
+                                    <!-- Activities will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -914,6 +1042,323 @@ document.addEventListener("submit", function (e) {
   }
 });
 
+</script>
+
+<script>
+// Attendance Details Modal Script (works with AJAX loaded content)
+(function() {
+    let attendanceModal = null;
+    
+    function initModal() {
+        const modalEl = document.getElementById('attendanceDetailsModal');
+        if (modalEl && !attendanceModal) {
+            attendanceModal = new bootstrap.Modal(modalEl);
+        }
+    }
+    
+    function populateModal(data) {
+        const logs = data.logs || [];
+        const activities = [];
+        
+        logs.forEach(log => {
+            activities.push({
+                type: log.type,
+                time: log.time,
+                working_from: log.working_from || '',
+                reason: log.reason || 'normal'
+            });
+        });
+        
+        activities.sort((a, b) => new Date(a.time) - new Date(b.time));
+        
+        // Show clock in if available
+        const firstIn = activities.find(a => a.type === 'in');
+        const clockInBox = document.getElementById('clockInBox');
+        const clockInTime = document.getElementById('clockInTime');
+        const clockInGreeting = document.getElementById('clockInGreeting');
+        
+        if (firstIn && clockInBox && clockInTime && clockInGreeting) {
+            const clockInTimeObj = new Date(firstIn.time);
+            const timeStr = clockInTimeObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            const hour = clockInTimeObj.getHours();
+            let greeting = 'Good morning! 👋';
+            if (hour >= 12 && hour < 17) greeting = 'Good afternoon! ☀️';
+            else if (hour >= 17) greeting = 'Good evening! 🌙';
+            
+            clockInTime.textContent = timeStr;
+            clockInGreeting.textContent = greeting;
+            clockInBox.style.display = 'block';
+        } else {
+            if (clockInBox) clockInBox.style.display = 'none';
+        }
+        
+        // Show clock out if available
+        const lastOut = activities.filter(a => a.type === 'out').pop();
+        const clockOutBox = document.getElementById('clockOutBox');
+        const clockOutTime = document.getElementById('clockOutTime');
+        const clockOutGreeting = document.getElementById('clockOutGreeting');
+        
+        if (lastOut && clockOutBox && clockOutTime && clockOutGreeting) {
+            const clockOutTimeObj = new Date(lastOut.time);
+            const timeStr = clockOutTimeObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            const hour = clockOutTimeObj.getHours();
+            let greeting = 'Have a great day! 👋';
+            if (hour >= 12 && hour < 17) greeting = 'Have a wonderful afternoon! ☀️';
+            else if (hour >= 17) greeting = 'Have a great evening! 🌙';
+            
+            clockOutTime.textContent = timeStr;
+            clockOutGreeting.textContent = greeting;
+            clockOutBox.style.display = 'block';
+        } else {
+            if (clockOutBox) clockOutBox.style.display = 'none';
+        }
+        
+        // Calculate total work time with breaks
+        const inLogs = activities.filter(a => a.type === 'in');
+        const outLogs = activities.filter(a => a.type === 'out');
+        const totalWorkBox = document.getElementById('totalWorkBox');
+        const totalWorkTime = document.getElementById('totalWorkTime');
+        const grossWorkTime = document.getElementById('grossWorkTime');
+        const breakTime = document.getElementById('breakTime');
+        const workProgressCircle = document.getElementById('workProgressCircle');
+        const breakProgressCircle = document.getElementById('breakProgressCircle');
+        
+        if (inLogs.length > 0 && outLogs.length > 0 && totalWorkBox && totalWorkTime && workProgressCircle) {
+            const firstIn = new Date(inLogs[0].time);
+            const lastOut = new Date(outLogs[outLogs.length - 1].time);
+            
+            // Calculate gross hours (total time from first in to last out)
+            const grossMs = lastOut - firstIn;
+            const grossHours = Math.floor(grossMs / (1000 * 60 * 60));
+            const grossMinutes = Math.floor((grossMs % (1000 * 60 * 60)) / (1000 * 60));
+            
+            // Calculate break time (time between out with lunch/tea reason and next in)
+            let totalBreakMs = 0;
+            for (let i = 0; i < activities.length - 1; i++) {
+                const current = activities[i];
+                const next = activities[i + 1];
+                
+                // If current is 'out' with lunch/tea reason and next is 'in', calculate break
+                if (current.type === 'out' && 
+                    (current.reason === 'lunch' || current.reason === 'tea') && 
+                    next && next.type === 'in') {
+                    const breakStart = new Date(current.time);
+                    const breakEnd = new Date(next.time);
+                    totalBreakMs += (breakEnd - breakStart);
+                }
+            }
+            
+            const breakHours = Math.floor(totalBreakMs / (1000 * 60 * 60));
+            const breakMinutes = Math.floor((totalBreakMs % (1000 * 60 * 60)) / (1000 * 60));
+            
+            // Calculate effective hours (gross - breaks)
+            const effectiveMs = grossMs - totalBreakMs;
+            const effectiveHours = Math.floor(effectiveMs / (1000 * 60 * 60));
+            const effectiveMinutes = Math.floor((effectiveMs % (1000 * 60 * 60)) / (1000 * 60));
+            
+            // Display effective work time
+            totalWorkTime.textContent = effectiveHours + 'hr ' + effectiveMinutes + 'min';
+            
+            // Display gross work time if breaks exist
+            if (totalBreakMs > 0 && grossWorkTime) {
+                grossWorkTime.textContent = 'Gross: ' + grossHours + 'hr ' + grossMinutes + 'min';
+                grossWorkTime.style.display = 'block';
+            } else {
+                if (grossWorkTime) grossWorkTime.style.display = 'none';
+            }
+            
+            // Display break time if breaks exist
+            if (totalBreakMs > 0 && breakTime) {
+                breakTime.textContent = 'Break: ' + breakHours + 'hr ' + breakMinutes + 'min';
+                breakTime.style.display = 'block';
+            } else {
+                if (breakTime) breakTime.style.display = 'none';
+            }
+            
+            // Calculate progress for pie chart (effective work out of 8 hours)
+            const progress = Math.min((effectiveMs / (8 * 60 * 60 * 1000)) * 100, 100);
+            const circumference = 2 * Math.PI * 70;
+            const workOffset = circumference - (progress / 100) * circumference;
+            workProgressCircle.style.strokeDashoffset = workOffset;
+            
+            // Show break segment in pie chart if breaks exist
+            if (totalBreakMs > 0 && breakProgressCircle) {
+                const breakProgress = Math.min((totalBreakMs / (8 * 60 * 60 * 1000)) * 100, 100);
+                const breakOffset = workOffset - ((breakProgress / 100) * circumference);
+                breakProgressCircle.style.strokeDashoffset = breakOffset;
+                breakProgressCircle.style.display = 'block';
+            } else {
+                if (breakProgressCircle) breakProgressCircle.style.display = 'none';
+            }
+            
+            totalWorkBox.style.display = 'block';
+        }
+        
+        // Populate activity timeline
+        const activityTimeline = document.getElementById('activityTimeline');
+        const activityCount = document.getElementById('activityCount');
+        let timelineHTML = '';
+        
+        if (activities.length > 0 && activityCount) {
+            activityCount.textContent = activities.length + ' activities today';
+            
+            activities.forEach((activity) => {
+                const activityTime = new Date(activity.time);
+                const timeStr = activityTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                const icon = activity.type === 'in' ? '⏰' : '⬜';
+                const label = activity.type === 'in' ? 'Clock In' : 'Clock Out';
+                const workingFrom = activity.working_from ? ' · ' + activity.working_from.charAt(0).toUpperCase() + activity.working_from.slice(1) : '';
+                
+                timelineHTML += `
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="me-3 mt-1">
+                            <div class="rounded-circle bg-light" style="width:8px; height:8px;"></div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center">
+                                <span class="me-2">${icon}</span>
+                                <span class="fw-bold">${label}</span>
+                            </div>
+                            <div class="text-muted small">${timeStr}${workingFrom}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            if (activityCount) activityCount.textContent = '0 activities today';
+            timelineHTML = '<div class="text-center py-3 text-muted">No activities recorded</div>';
+        }
+        
+        if (activityTimeline) activityTimeline.innerHTML = timelineHTML;
+    }
+    
+    function formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    
+    // Event delegation for dynamically loaded content
+    document.addEventListener('click', function(e) {
+        const cell = e.target.closest('.att-clickable');
+        if (!cell) return;
+        
+        initModal();
+        if (!attendanceModal) {
+            console.error('Modal not initialized');
+            return;
+        }
+        
+        const empId = cell.getAttribute('data-emp-id');
+        const empName = cell.getAttribute('data-emp-name');
+        const empRole = cell.getAttribute('data-emp-role');
+        const date = cell.getAttribute('data-date');
+        
+        if (!empId || !date) return;
+        
+        // Set employee info
+        const modalEmpName = document.getElementById('modalEmpName');
+        const modalEmpRole = document.getElementById('modalEmpRole');
+        const modalEmpAvatar = document.getElementById('modalEmpAvatar');
+        const modalDate = document.getElementById('modalDate');
+        
+        if (modalEmpName) modalEmpName.textContent = empName;
+        if (modalEmpRole) modalEmpRole.textContent = empRole;
+        if (modalEmpAvatar) modalEmpAvatar.textContent = empName.charAt(0).toUpperCase();
+        if (modalDate) modalDate.textContent = formatDate(date);
+        
+        // Show loading
+        const clockInBox = document.getElementById('clockInBox');
+        const clockOutBox = document.getElementById('clockOutBox');
+        const totalWorkBox = document.getElementById('totalWorkBox');
+        const activityTimeline = document.getElementById('activityTimeline');
+        
+        if (clockInBox) clockInBox.style.display = 'none';
+        if (clockOutBox) clockOutBox.style.display = 'none';
+        if (totalWorkBox) totalWorkBox.style.display = 'none';
+        if (activityTimeline) activityTimeline.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm" role="status"></div></div>';
+        
+        // Fetch attendance details
+        fetch('get_attendance_details.php?emp_id=' + empId + '&date=' + date)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    populateModal(data);
+                } else {
+                    if (activityTimeline) activityTimeline.innerHTML = '<div class="text-center py-3 text-muted">No attendance data found</div>';
+                }
+                // Ensure modal is initialized and show as popup
+                if (!attendanceModal) {
+                    initModal();
+                }
+                if (attendanceModal && typeof attendanceModal.show === 'function') {
+                    attendanceModal.show();
+                } else {
+                    console.error('Modal not properly initialized');
+                    // Fallback: manually show modal
+                    const modalEl = document.getElementById('attendanceDetailsModal');
+                    if (modalEl) {
+                        modalEl.style.display = 'block';
+                        modalEl.classList.add('show');
+                        document.body.classList.add('modal-open');
+                        const backdrop = document.createElement('div');
+                        backdrop.className = 'modal-backdrop fade show';
+                        backdrop.id = 'attendanceModalBackdrop';
+                        document.body.appendChild(backdrop);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                if (activityTimeline) activityTimeline.innerHTML = '<div class="text-center py-3 text-danger">Error loading data</div>';
+                // Ensure modal is initialized and show as popup
+                if (!attendanceModal) {
+                    initModal();
+                }
+                if (attendanceModal && typeof attendanceModal.show === 'function') {
+                    attendanceModal.show();
+                } else {
+                    // Fallback: manually show modal with proper Bootstrap structure
+                    const modalEl = document.getElementById('attendanceDetailsModal');
+                    if (modalEl) {
+                        modalEl.classList.add('show');
+                        modalEl.style.display = 'block';
+                        modalEl.setAttribute('aria-hidden', 'false');
+                        modalEl.setAttribute('aria-modal', 'true');
+                        document.body.classList.add('modal-open');
+                        document.body.style.overflow = 'hidden';
+                        document.body.style.paddingRight = '0px';
+                        
+                        // Create backdrop
+                        let backdrop = document.getElementById('attendanceModalBackdrop');
+                        if (!backdrop) {
+                            backdrop = document.createElement('div');
+                            backdrop.className = 'modal-backdrop fade show';
+                            backdrop.id = 'attendanceModalBackdrop';
+                            document.body.appendChild(backdrop);
+                        }
+                    }
+                }
+            });
+    });
+    
+    // Initialize on page load (after Bootstrap is loaded)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait for Bootstrap to be available
+            if (typeof bootstrap !== 'undefined') {
+                initModal();
+            } else {
+                setTimeout(initModal, 100);
+            }
+        });
+    } else {
+        if (typeof bootstrap !== 'undefined') {
+            initModal();
+        } else {
+            setTimeout(initModal, 100);
+        }
+    }
+})();
 </script>
 
 </body>
