@@ -2,9 +2,11 @@
 // shifts.php
 include 'db.php';
 
-// ---------------- HANDLE FORM SUBMIT (ADD / EDIT) ----------------
+$isAjax = isset($_GET['ajax']) && $_GET['ajax'] == '1';
+
 $errors = [];
 
+// ---------------- HANDLE FORM SUBMIT (ADD / EDIT) ----------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id                     = isset($_POST['id']) ? (int)$_POST['id'] : 0;
     $shift_name             = trim($_POST['shift_name'] ?? '');
@@ -75,10 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $total_punches
                 );
 
-                if ($stmt->execute()) {
-                    echo "<script>alert('Shift added successfully');window.location='shifts.php';</script>";
-                    exit;
-                } else {
+                if (!$stmt->execute()) {
                     $errors[] = "Database error: " . $con->error;
                 }
             } else {
@@ -117,10 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $id
                 );
 
-                if ($stmt->execute()) {
-                    echo "<script>alert('Shift updated successfully');window.location='shifts.php';</script>";
-                    exit;
-                } else {
+                if (!$stmt->execute()) {
                     $errors[] = "Database error: " . $con->error;
                 }
             } else {
@@ -128,14 +124,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+
+    // Response handling
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        if (empty($errors)) {
+            echo json_encode([
+                'success' => true,
+                'reload'  => 'shifts.php?ajax=1',
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'errors'  => $errors,
+            ]);
+        }
+        exit;
+    } else {
+        if (empty($errors)) {
+            header("Location: shifts.php");
+            exit;
+        }
+        // agar errors hain & normal mode hai to neeche form ke saath show karenge
+    }
 }
 
 // ---------------- HANDLE DELETE ----------------
 if (isset($_GET['delete'])) {
     $delId = (int)$_GET['delete'];
     $con->query("DELETE FROM shifts WHERE id = $delId");
-    echo "<script>alert('Shift deleted');window.location='shifts.php';</script>";
-    exit;
+
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'reload'  => 'shifts.php?ajax=1',
+        ]);
+        exit;
+    } else {
+        header("Location: shifts.php");
+        exit;
+    }
 }
 
 // ---------------- EDIT MODE: FETCH SINGLE SHIFT ----------------
@@ -148,16 +177,10 @@ if (isset($_GET['edit'])) {
 
 // ---------------- LIST ALL SHIFTS ----------------
 $list = $con->query("SELECT * FROM shifts ORDER BY shift_name ASC");
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Shift Master</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
 
+// ---------------- RENDER FUNCTION ----------------
+function renderShiftContent($errors, $editRow, $list) {
+?>
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Shift Master</h3>
@@ -292,7 +315,7 @@ $list = $con->query("SELECT * FROM shifts ORDER BY shift_name ASC");
     </div>
   </div>
 
-   <!-- SHIFT LIST TABLE (Improved UI) -->
+   <!-- SHIFT LIST TABLE -->
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
       <span class="fw-semibold">Shift List</span>
@@ -324,12 +347,10 @@ $list = $con->query("SELECT * FROM shifts ORDER BY shift_name ASC");
           if ($list && $list->num_rows > 0) {
               while ($row = $list->fetch_assoc()) {
 
-                  // ---- Timing (12-hour format) ----
                   $startDisp = date('h:i A', strtotime($row['start_time']));
                   $endDisp   = date('h:i A', strtotime($row['end_time']));
                   $timing    = "$startDisp – $endDisp";
 
-                  // ---- Lunch (12-hour format, optional) ----
                   if (!empty($row['lunch_start']) && !empty($row['lunch_end'])) {
                       $lunchStart = date('h:i A', strtotime($row['lunch_start']));
                       $lunchEnd   = date('h:i A', strtotime($row['lunch_end']));
@@ -338,14 +359,12 @@ $list = $con->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                       $lunch = '—';
                   }
 
-                  // ---- Half day time (start + half_day_after minutes) ----
                   $halfTime = '—';
                   if (!empty($row['start_time']) && isset($row['half_day_after'])) {
                       $halfTs   = strtotime($row['start_time']) + ((int)$row['half_day_after'] * 60);
                       $halfTime = date('h:i A', $halfTs);
                   }
 
-                  // ---- Updated datetime (nice format) ----
                   $updatedTs = $row['updated_at'] ?: $row['created_at'];
                   $updated   = date('d M Y, h:i A', strtotime($updatedTs));
           ?>
@@ -369,15 +388,28 @@ $list = $con->query("SELECT * FROM shifts ORDER BY shift_name ASC");
               <td><?php echo $updated; ?></td>
 
               <td class="text-end text-nowrap">
-                <a href="shifts.php?edit=<?php echo $row['id']; ?>"
-                   class="btn btn-sm btn-outline-primary me-1">
-                  Edit
-                </a>
-                <a href="shifts.php?delete=<?php echo $row['id']; ?>"
-                   class="btn btn-sm btn-outline-danger"
-                   onclick="return confirm('Delete this shift?');">
-                  Delete
-                </a>
+                <?php if ($GLOBALS['isAjax']) { ?>
+                  <a href="javascript:void(0)"
+                     class="btn btn-sm btn-outline-primary me-1 shift-edit"
+                     data-edit-id="<?php echo $row['id']; ?>">
+                    Edit
+                  </a>
+                  <a href="javascript:void(0)"
+                     class="btn btn-sm btn-outline-danger shift-delete"
+                     data-del-id="<?php echo $row['id']; ?>">
+                    Delete
+                  </a>
+                <?php } else { ?>
+                  <a href="shifts.php?edit=<?php echo $row['id']; ?>"
+                     class="btn btn-sm btn-outline-primary me-1">
+                    Edit
+                  </a>
+                  <a href="shifts.php?delete=<?php echo $row['id']; ?>"
+                     class="btn btn-sm btn-outline-danger"
+                     onclick="return confirm('Delete this shift?');">
+                    Delete
+                  </a>
+                <?php } ?>
               </td>
             </tr>
           <?php
@@ -395,3 +427,25 @@ $list = $con->query("SELECT * FROM shifts ORDER BY shift_name ASC");
       </div>
     </div>
   </div>
+
+</div>
+<?php
+}
+
+// ------------- AJAX vs FULL PAGE OUTPUT -------------
+if ($isAjax) {
+    renderShiftContent($errors, $editRow, $list);
+    exit;
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shift Master</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<?php renderShiftContent($errors, $editRow, $list); ?>
+</body>
+</html>

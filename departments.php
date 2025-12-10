@@ -1,6 +1,9 @@
 <?php
 include 'db.php'; // yaha tumhara mysqli connection hai: $con
 
+// AJAX mode check
+$isAjax = isset($_GET['ajax']) && $_GET['ajax'] == '1';
+
 // --------- INSERT / UPDATE HANDLE ----------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dept_name = trim($_POST['department_name'] ?? '');
@@ -19,11 +22,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
         }
     }
+
+    // If AJAX → return JSON, NO redirect
+    if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
+        echo json_encode([
+            "success" => true,
+            "reload"  => "departments.php?ajax=1"
+        ]);
+        exit;
+    }
+
+    // Normal mode → redirect
     header("Location: departments.php");
     exit;
 }
 
-// --------- DELETE (SOFT DEACTIVATE NAHI CHAHIYE TO HARD DELETE) ----------
+
+// --------- DELETE (HARD DELETE) ----------
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
     $con->query("DELETE FROM departments WHERE id = $id");
@@ -41,16 +56,10 @@ if (isset($_GET['edit'])) {
 
 // List data
 $list = $con->query("SELECT * FROM departments ORDER BY department_name ASC");
+
+// ---------- Common content rendering function ----------
+function renderDepartmentsContent($editDept, $list) {
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Departments</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-<div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Departments</h3>
   </div>
@@ -97,13 +106,24 @@ $list = $con->query("SELECT * FROM departments ORDER BY department_name ASC");
         <tbody>
         <?php
         $i = 1;
-        while ($row = $list->fetch_assoc()) { ?>
+        if ($list && $list->num_rows > 0) {
+          while ($row = $list->fetch_assoc()) { ?>
           <tr>
             <td><?php echo $i++; ?></td>
             <td><?php echo htmlspecialchars($row['department_name']); ?></td>
-            <td><?php echo date('d-m-Y', strtotime($row['created_at'])); ?></td>
+            <td>
+              <?php
+                echo !empty($row['created_at'])
+                  ? date('d-m-Y', strtotime($row['created_at']))
+                  : '-';
+              ?>
+            </td>
             <td class="text-end">
-              <a href="departments.php?edit=<?php echo $row['id']; ?>" class="btn btn-sm btn-outline-primary">Edit</a>
+              <a href="javascript:void(0)"
+   class="btn btn-sm btn-outline-primary dept-edit"
+   data-edit-id="<?php echo $row['id']; ?>">
+   Edit
+</a>
               <a href="departments.php?delete=<?php echo $row['id']; ?>"
                  class="btn btn-sm btn-outline-danger"
                  onclick="return confirm('Delete this department?');">
@@ -111,11 +131,41 @@ $list = $con->query("SELECT * FROM departments ORDER BY department_name ASC");
               </a>
             </td>
           </tr>
+        <?php
+          }
+        } else { ?>
+          <tr>
+            <td colspan="4" class="text-center py-4 text-muted">
+              No departments found. Please add one.
+            </td>
+          </tr>
         <?php } ?>
         </tbody>
       </table>
     </div>
   </div>
+<?php
+} // end function
+
+// ---------- If AJAX: sirf inner content bhejo, no HTML wrapper ----------
+if ($isAjax) {
+    // employees.php already loaded Bootstrap & body etc., so yaha sirf inner content
+    renderDepartmentsContent($editDept, $list);
+    exit;
+}
+
+// ---------- Normal full page output ----------
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Departments</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container py-4">
+  <?php renderDepartmentsContent($editDept, $list); ?>
 </div>
 </body>
 </html>
