@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Dec 10, 2025 at 07:07 PM
+-- Generation Time: Dec 10, 2025 at 08:19 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -45,8 +45,8 @@ CREATE TABLE `attendance_logs` (
 --
 
 INSERT INTO `attendance_logs` (`id`, `user_id`, `type`, `working_from`, `reason`, `time`, `device_id`, `latitude`, `longitude`, `synced`) VALUES
-(65, '1', 'in', 'office', 'office_leave', '2025-12-10 10:06:00', 'ADMIN_WEB', NULL, NULL, 1),
-(66, '1', 'out', 'office', 'office_leave', '2025-12-10 20:06:00', 'ADMIN_WEB', NULL, NULL, 1);
+(67, '1', 'in', 'office', 'normal', '2025-12-09 10:54:00', 'ADMIN_WEB', NULL, NULL, 1),
+(68, '1', 'out', 'office', 'normal', '2025-12-09 21:59:00', 'ADMIN_WEB', NULL, NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -118,8 +118,29 @@ CREATE TABLE `employees` (
 --
 
 INSERT INTO `employees` (`id`, `emp_code`, `name`, `mobile`, `email`, `dob`, `department_id`, `designation_id`, `shift_id`, `weekoff_days`, `joining_date`, `updated_at`, `device_id`, `status`, `created_at`) VALUES
-(3, 'EMP001', 'Sachin Mandal', '6352816306', 'sachin.balarbuilders@gmail.com', '2025-12-10', 1, 2, 2, 'Wednesday', '2025-05-30', '2025-12-10 10:10:43', NULL, 1, '2025-12-09 20:17:04'),
-(4, 'EMP004', 'Harish Thapa', '6352816306', '', '0000-00-00', 1, 2, 2, NULL, '2025-12-10', '2025-12-10 09:11:25', NULL, 1, '2025-12-10 09:10:56');
+(3, 'EMP001', 'Sachin Mandal', '6352816306', 'sachin.balarbuilders@gmail.com', '2025-12-10', 1, 2, 2, 'Wednesday', '2025-05-30', '2025-12-10 18:24:17', NULL, 1, '2025-12-09 20:17:04'),
+(4, 'EMP004', 'Harish Thapa', '6352816306', '', '2025-12-10', 1, 2, 2, 'Thursday', '2025-12-10', '2025-12-10 19:17:34', NULL, 1, '2025-12-10 09:10:56');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `holidays`
+--
+
+CREATE TABLE `holidays` (
+  `id` int(11) NOT NULL,
+  `holiday_name` varchar(100) NOT NULL,
+  `holiday_date` date NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `holidays`
+--
+
+INSERT INTO `holidays` (`id`, `holiday_name`, `holiday_date`, `created_at`, `updated_at`) VALUES
+(1, 'Makar Sankranti', '2026-01-14', '2025-12-10 18:38:35', NULL);
 
 -- --------------------------------------------------------
 
@@ -181,6 +202,13 @@ ALTER TABLE `employees`
   ADD KEY `designation_id` (`designation_id`);
 
 --
+-- Indexes for table `holidays`
+--
+ALTER TABLE `holidays`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `holiday_date` (`holiday_date`);
+
+--
 -- Indexes for table `shifts`
 --
 ALTER TABLE `shifts`
@@ -194,7 +222,7 @@ ALTER TABLE `shifts`
 -- AUTO_INCREMENT for table `attendance_logs`
 --
 ALTER TABLE `attendance_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=67;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=69;
 
 --
 -- AUTO_INCREMENT for table `departments`
@@ -213,6 +241,12 @@ ALTER TABLE `designations`
 --
 ALTER TABLE `employees`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `holidays`
+--
+ALTER TABLE `holidays`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `shifts`
